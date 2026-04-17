@@ -43,7 +43,9 @@ export type DataTableColumn = {
 	index: number;
 };
 
-export type DataTableColumnCreatePayload = Pick<DataTableColumn, 'name' | 'type'>;
+export type DataTableColumnCreatePayload = Pick<DataTableColumn, 'name' | 'type'> & {
+	csvColumnName?: string;
+};
 
 export type DataTableValue = string | number | boolean | Date | FileMetadata | null;
 

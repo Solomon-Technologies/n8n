@@ -15,6 +15,34 @@ import { ALL_CONDITIONS, ANY_CONDITION, ROWS_LIMIT_DEFAULT, type FilterType } fr
 import { DATA_TABLE_ID_FIELD } from './fields';
 import { buildGetManyFilter, isFieldArray, isMatchType, getDataTableProxyExecute } from './utils';
 
+/**
+ * Recursively converts Date objects to ISO strings in an object
+ * This ensures that all output data is JSON-compatible
+ */
+function convertDatesToIsoStrings<T>(obj: T): T {
+	if (obj === null || obj === undefined) {
+		return obj;
+	}
+
+	if (obj instanceof Date) {
+		return obj.toISOString() as T;
+	}
+
+	if (Array.isArray(obj)) {
+		return obj.map(convertDatesToIsoStrings) as T;
+	}
+
+	if (typeof obj === 'object') {
+		const converted: Record<string, unknown> = {};
+		for (const [key, value] of Object.entries(obj)) {
+			converted[key] = convertDatesToIsoStrings(value);
+		}
+		return converted as T;
+	}
+
+	return obj;
+}
+
 export function getSelectFields(
 	displayOptions: IDisplayOptions,
 	requireCondition = false,
@@ -187,6 +215,7 @@ export async function executeSelectMany(
 	dataTableProxy: IDataTableProjectService,
 	rejectEmpty = false,
 	limit?: number,
+	sortBy?: [string, 'ASC' | 'DESC'],
 ): Promise<Array<{ json: DataTableRowReturn; binary?: Record<string, IBinaryData> }>> {
 	const filter = await getSelectFilter(ctx, index);
 
@@ -200,9 +229,11 @@ export async function executeSelectMany(
 	const returnAll = ctx.getNodeParameter('returnAll', index, false);
 	limit = limit ?? (!returnAll ? ctx.getNodeParameter('limit', index, ROWS_LIMIT_DEFAULT) : 0);
 
-	// Get columns to check for file types
 	const columns = await dataTableProxy.getColumns();
 	const hasFileColumns = columns.some((col) => col.type === 'file');
+
+	const nodeVersion = ctx.getNode().typeVersion;
+	const shouldConvertDates = nodeVersion >= 1.1;
 
 	let expectedTotal: number | undefined;
 	let skip = 0;
@@ -213,12 +244,13 @@ export async function executeSelectMany(
 			skip,
 			take: limit ? Math.min(take, limit - result.length) : take,
 			filter,
+			sortBy,
 		});
+		const normalizedData = shouldConvertDates ? data.map(convertDatesToIsoStrings) : data;
 
-		// Convert file metadata to binary data if file columns exist
 		const wrapped = hasFileColumns
-			? await Promise.all(data.map((row) => convertFileMetadataToBinary(row, columns)))
-			: data.map((json) => ({ json }));
+			? await Promise.all(normalizedData.map((row) => convertFileMetadataToBinary(row, columns)))
+			: normalizedData.map((json) => ({ json }));
 
 		// Fast path: everything fits in a single page
 		if (skip === 0 && count === data.length) {

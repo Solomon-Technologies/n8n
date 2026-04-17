@@ -32,6 +32,7 @@ registerAgGridModulesOnce();
 type Props = {
 	dataTable: DataTable;
 	search?: string;
+	readOnly?: boolean;
 };
 
 const props = defineProps<Props>();
@@ -47,11 +48,16 @@ const { debounce } = useDebounce();
 const rowData = ref<DataTableRow[]>([]);
 const hasRecords = computed(() => rowData.value.length > 0);
 
+const defaultColDef = computed(() => ({
+	...GRID_FILTER_CONFIG.defaultColDef,
+	editable: !props.readOnly,
+}));
+
 const agGrid = useAgGrid<DataTableRow>({
 	gridContainerRef,
 	defaultSortColumn: DEFAULT_ID_COLUMN_NAME,
 	pinnedBottomRowId: ADD_ROW_ROW_ID,
-	defaultColDef: GRID_FILTER_CONFIG.defaultColDef,
+	defaultColDef: defaultColDef.value,
 });
 
 const dataTableColumns = useDataTableColumns({
@@ -62,6 +68,7 @@ const dataTableColumns = useDataTableColumns({
 	isTextEditorOpen: agGrid.isTextEditorOpen,
 	projectId: props.dataTable.projectId,
 	dataTableId: props.dataTable.id,
+	readOnly: computed(() => props.readOnly ?? false),
 });
 
 const { onFilterChanged, currentFilterJSON } = useDataTableColumnFilters({
@@ -82,6 +89,7 @@ const {
 
 const selection = useDataTableSelection({
 	gridApi: agGrid.gridApi,
+	readOnly: computed(() => props.readOnly ?? false),
 });
 
 const dataTableOperations = useDataTableOperations({
@@ -163,6 +171,7 @@ watch(
 defineExpose({
 	addRow: dataTableOperations.onAddRowClick,
 	addColumn: dataTableOperations.onAddColumn,
+	fetchDataTableRows: dataTableOperations.fetchDataTableRows,
 });
 </script>
 
@@ -251,6 +260,28 @@ defineExpose({
 	--ag-input-background-color: var(--color--background--light-2);
 	--ag-focus-shadow: none;
 
+	// Theme-aware scrollbar styling (dark mode support)
+	:global(.ag-body-horizontal-scroll-viewport),
+	:global(.ag-body-vertical-scroll-viewport) {
+		scrollbar-color: var(--color--foreground--shade-1) transparent;
+
+		@supports selector(::-webkit-scrollbar) {
+			&::-webkit-scrollbar {
+				height: var(--spacing--2xs);
+				width: var(--spacing--2xs);
+			}
+
+			&::-webkit-scrollbar-track {
+				background: transparent;
+			}
+
+			&::-webkit-scrollbar-thumb {
+				border-radius: var(--radius);
+				background: var(--color--foreground--shade-1);
+			}
+		}
+	}
+
 	:global(.ag-cell) {
 		display: flex;
 		align-items: center;
@@ -289,6 +320,10 @@ defineExpose({
 	:global(.system-column),
 	:global(.system-cell) {
 		color: var(--color--text--tint-1);
+	}
+
+	:global(.oversized-cell) {
+		cursor: not-allowed;
 	}
 
 	:global(.ag-header-cell[col-id='id']) {

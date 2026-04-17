@@ -13,6 +13,7 @@ import type { DataTableColumn, DataTableRow } from '@/features/core/dataTable/da
 import {
 	ADD_ROW_ROW_ID,
 	EMPTY_VALUE,
+	MAX_CELL_DISPLAY_LENGTH,
 	NULL_VALUE,
 	NUMBER_DECIMAL_SEPARATOR,
 	NUMBER_THOUSAND_SEPARATOR,
@@ -20,17 +21,27 @@ import {
 } from '@/features/core/dataTable/constants';
 import NullEmptyCellRenderer from '@/features/core/dataTable/components/dataGrid/NullEmptyCellRenderer.vue';
 import FileCell from '@/features/core/dataTable/components/dataGrid/FileCell.vue';
+import OversizedCellRenderer from '@/features/core/dataTable/components/dataGrid/OversizedCellRenderer.vue';
 import { isDataTableValue } from '@/features/core/dataTable/typeGuards';
 
-export const getCellClass = (params: CellClassParams): string => {
-	if (params.data?.id === ADD_ROW_ROW_ID) {
-		return 'add-row-cell';
-	}
-	if (params.column.getUserProvidedColDef()?.cellDataType === 'boolean') {
-		return 'boolean-cell';
-	}
-	return '';
-};
+export const isOversizedValue = (value: unknown): boolean =>
+	typeof value === 'string' && value.length > MAX_CELL_DISPLAY_LENGTH;
+
+export const createCellClass =
+	(col: DataTableColumn) =>
+	(params: CellClassParams<DataTableRow>): string => {
+		if (params.data?.id === ADD_ROW_ROW_ID) {
+			return 'add-row-cell';
+		}
+		if (params.column.getUserProvidedColDef()?.cellDataType === 'boolean') {
+			return 'boolean-cell';
+		}
+		const rowValue = params.data?.[col.name];
+		if (isOversizedValue(rowValue)) {
+			return 'oversized-cell';
+		}
+		return '';
+	};
 
 export const createValueGetter =
 	(col: DataTableColumn) => (params: ValueGetterParams<DataTableRow>) => {
@@ -48,26 +59,25 @@ export const createValueGetter =
 
 export const createCellRendererSelector =
 	(col: DataTableColumn, projectId?: string, dataTableId?: string) =>
-	(params: ICellRendererParams) => {
+	(params: ICellRendererParams<DataTableRow>) => {
 		if (params.data?.id === ADD_ROW_ROW_ID || col.id === 'add-column') {
 			return {};
 		}
 
-		// Handle file columns with custom renderer
 		if (col.type === 'file') {
 			return {
 				component: FileCell,
 				params: {
-					value: (params.data as DataTableRow | undefined)?.[col.name] ?? null,
+					value: params.data?.[col.name] ?? null,
 					projectId,
 					dataTableId,
 					columnId: col.id,
-					rowId: (params.data as DataTableRow | undefined)?.id,
+					rowId: params.data?.id,
 				},
 			};
 		}
 
-		let rowValue = (params.data as DataTableRow | undefined)?.[col.name];
+		let rowValue = params.data?.[col.name];
 		if (rowValue === undefined) {
 			rowValue = null;
 		}
@@ -81,6 +91,11 @@ export const createCellRendererSelector =
 			return {
 				component: NullEmptyCellRenderer,
 				params: { value: EMPTY_VALUE },
+			};
+		}
+		if (isOversizedValue(rowValue)) {
+			return {
+				component: OversizedCellRenderer,
 			};
 		}
 		return undefined;
