@@ -29,9 +29,7 @@ import { useI18n } from '@n8n/i18n';
 import { useRootStore } from '@n8n/stores/useRootStore';
 import { h } from 'vue';
 import { useRolesStore } from '@/app/stores/roles.store';
-import { useDataTableStore } from '@/features/core/dataTable/dataTable.store';
 import { useFavoritesStore } from '@/app/stores/favorites.store';
-import { hasPermission } from '@/app/utils/rbac/permissions';
 
 export const state = {
 	initialized: false,
@@ -120,7 +118,6 @@ export async function initializeAuthenticatedFeatures(
 	const rolesStore = useRolesStore();
 	const bannersStore = useBannersStore();
 	const versionsStore = useVersionsStore();
-	const dataTableStore = useDataTableStore();
 	const favoritesStore = useFavoritesStore();
 
 	if (!settingsStore.isPreviewMode) {

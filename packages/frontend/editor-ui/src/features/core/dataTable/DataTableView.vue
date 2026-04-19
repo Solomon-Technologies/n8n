@@ -16,6 +16,7 @@ import debounce from 'lodash/debounce';
 import { useDocumentTitle } from '@/app/composables/useDocumentTitle';
 import { useToast } from '@/app/composables/useToast';
 import { useUIStore } from '@/app/stores/ui.store';
+import { useBannersStore } from '@/features/shared/banners/banners.store';
 import { useDataTableStore } from '@/features/core/dataTable/dataTable.store';
 import type { DataTableResource } from '@/features/core/dataTable/types';
 import { useSourceControlStore } from '@/features/integrations/sourceControl.ee/sourceControl.store';
@@ -42,6 +43,7 @@ const insightsStore = useInsightsStore();
 const projectsStore = useProjectsStore();
 const sourceControlStore = useSourceControlStore();
 const uiStore = useUIStore();
+const bannersStore = useBannersStore();
 const { fetchDependencyCounts } = useDependencies();
 
 const loading = ref(true);
@@ -116,9 +118,9 @@ const fetchDataTables = async () => {
 			.fetchDataTableSize()
 			.then(({ quotaStatus }) => {
 				if (quotaStatus === 'error') {
-					uiStore.pushBannerToStack('DATA_TABLE_STORAGE_LIMIT_ERROR');
+					bannersStore.pushBannerToStack('DATA_TABLE_STORAGE_LIMIT_ERROR');
 				} else if (quotaStatus === 'warn') {
-					uiStore.pushBannerToStack('DATA_TABLE_STORAGE_LIMIT_WARNING');
+					bannersStore.pushBannerToStack('DATA_TABLE_STORAGE_LIMIT_WARNING');
 				}
 			})
 			.catch((error) => {

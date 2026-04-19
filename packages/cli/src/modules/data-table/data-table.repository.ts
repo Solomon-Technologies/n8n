@@ -439,22 +439,22 @@ export class DataTableRepository extends Repository<DataTable> {
 	}
 
 	/**
-	 * Builds the SQL query to get sizes for specific data tables.
-	 * Filters to only the tables we know exist to avoid full catalog scans (performance hardening for 100+ tables).
+	 * Builds the SQL query for data table sizes.
+	 * When dataTableIds is provided, filters the query to those ids to avoid full catalog scans
+	 * (performance hardening for 100+ tables). When omitted (sort-by-size path), returns all.
 	 */
-	private getDataTableSizeQuery(dataTableIds: string[]): string {
-		if (dataTableIds.length === 0) return '';
-
+	private getDataTableSizeQuery(dataTableIds?: string[]): string {
 		const dbType = this.globalConfig.database.type;
-		const tableNames = dataTableIds.map((id) => toTableName(id));
-		const tableNamesStr = tableNames.map((name) => `'${name}'`).join(', ');
+		const filter = dataTableIds?.length
+			? dataTableIds.map((id) => `'${toTableName(id)}'`).join(', ')
+			: undefined;
 
 		switch (dbType) {
 			case 'sqlite':
 				return `
         SELECT name AS table_name, (SELECT SUM(pgsize) FROM dbstat WHERE name = t.name) AS table_bytes
         FROM sqlite_schema t
-        WHERE type = 'table' AND name IN (${tableNamesStr})
+        WHERE type = 'table'${filter ? ` AND name IN (${filter})` : ''}
       `;
 
 			case 'postgresdb': {
@@ -464,33 +464,8 @@ export class DataTableRepository extends Repository<DataTable> {
           FROM pg_class c
           JOIN pg_namespace n ON n.oid = c.relnamespace
          WHERE n.nspname = '${schemaName}'
-           AND c.relname IN (${tableNamesStr})
-           AND c.relkind IN ('r', 'm', 'p')
+           AND c.relkind IN ('r', 'm', 'p')${filter ? ` AND c.relname IN (${filter})` : ''}
       `;
-			}
-
-			case 'mysqldb':
-			case 'mariadb': {
-				const databaseName = this.globalConfig.database.mysqldb.database;
-				const isMariaDb = dbType === 'mariadb';
-				const innodbTables = isMariaDb ? 'INNODB_SYS_TABLES' : 'INNODB_TABLES';
-				const innodbTablespaces = isMariaDb ? 'INNODB_SYS_TABLESPACES' : 'INNODB_TABLESPACES';
-				return `
-        SELECT t.TABLE_NAME AS table_name,
-            COALESCE(
-                (
-                  SELECT SUM(ists.ALLOCATED_SIZE)
-                    FROM information_schema.${innodbTables} ist
-                    JOIN information_schema.${innodbTablespaces} ists
-                      ON ists.SPACE = ist.SPACE
-                   WHERE ist.NAME = CONCAT(t.TABLE_SCHEMA, '/', t.TABLE_NAME)
-                ),
-                (t.DATA_LENGTH + t.INDEX_LENGTH)
-            ) AS table_bytes
-        FROM information_schema.TABLES t
-        WHERE t.TABLE_SCHEMA = '${databaseName}'
-          AND t.TABLE_NAME IN (${tableNamesStr})
-    `;
 			}
 
 			default:
@@ -500,6 +475,7 @@ export class DataTableRepository extends Repository<DataTable> {
 
 	private async getAllDataTablesSizeMap(dataTableIds: string[]): Promise<Map<string, number>> {
 		const sizeMap = new Map<string, number>();
+		if (dataTableIds.length === 0) return sizeMap;
 		const sql = this.getDataTableSizeQuery(dataTableIds);
 		if (sql === '') return sizeMap;
 

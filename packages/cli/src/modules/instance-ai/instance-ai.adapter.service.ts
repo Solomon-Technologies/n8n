@@ -86,6 +86,7 @@ import {
 	WEBHOOK_NODE_TYPE,
 	SCHEDULE_TRIGGER_NODE_TYPE,
 	TimeoutExecutionCancelledError,
+	UnexpectedError,
 	jsonParse,
 } from 'n8n-workflow';
 
@@ -1180,13 +1181,17 @@ export class InstanceAiAdapterService {
 			async getSchema(dataTableId) {
 				const projectId = await resolveProjectIdForTable(['dataTable:read'], dataTableId);
 				const columns = await dataTableService.getColumns(dataTableId, projectId);
-				return columns.map(
-					(c, index): DataTableColumnInfo => ({
-						id: c.id,
-						name: c.name,
-						type: c.type,
-						index,
-					}),
+				return columns.flatMap((c, index): DataTableColumnInfo[] =>
+					c.type === 'file'
+						? []
+						: [
+								{
+									id: c.id,
+									name: c.name,
+									type: c.type,
+									index,
+								},
+							],
 				);
 			},
 
@@ -1194,6 +1199,9 @@ export class InstanceAiAdapterService {
 				assertNotReadOnly();
 				const projectId = await resolveProjectIdForTable(['dataTable:update'], dataTableId);
 				const result = await dataTableService.addColumn(dataTableId, projectId, column);
+				if (result.type === 'file') {
+					throw new UnexpectedError('Cannot add file columns via instance AI adapter');
+				}
 				return {
 					id: result.id,
 					name: result.name,

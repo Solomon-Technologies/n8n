@@ -250,6 +250,9 @@ export class GlobalConfig {
 	dataTable: DataTableConfig;
 
 	@Nested
+	supabaseStorage: SupabaseStorageConfig;
+
+	@Nested
 	workflowHistoryCompaction: WorkflowHistoryCompactionConfig;
 
 	@Nested
