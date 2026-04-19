@@ -10,6 +10,25 @@ export type FileMetadata = {
 	uploadedAt: Date;
 };
 
+/**
+ * Data Table row operations
+ * Used by the Data Table node (n8n-nodes-base.dataTable) for row-level CRUD operations
+ */
+export type DataTableRowOperation =
+	| 'insert'
+	| 'get'
+	| 'rowExists'
+	| 'rowNotExists'
+	| 'deleteRows'
+	| 'update'
+	| 'upsert';
+
+/**
+ * Data Table table operations
+ * Used by the Data Table node for table-level management operations
+ */
+export type DataTableTableOperation = 'create' | 'delete' | 'list' | 'update';
+
 export type DataTableColumn = {
 	id: string;
 	name: string;
@@ -36,17 +55,11 @@ export type CreateDataTableOptions = Pick<DataTable, 'name'> & {
 
 export type UpdateDataTableOptions = { name: string };
 
+export type ListDataTableOptionsSortByKey = 'name' | 'createdAt' | 'updatedAt';
+
 export type ListDataTableOptions = {
 	filter?: Record<string, string | string[]>;
-	sortBy?:
-		| 'name:asc'
-		| 'name:desc'
-		| 'createdAt:asc'
-		| 'createdAt:desc'
-		| 'updatedAt:asc'
-		| 'updatedAt:desc'
-		| 'sizeBytes:asc'
-		| 'sizeBytes:desc';
+	sortBy?: `${ListDataTableOptionsSortByKey}:asc` | `${ListDataTableOptionsSortByKey}:desc`;
 	take?: number;
 	skip?: number;
 };

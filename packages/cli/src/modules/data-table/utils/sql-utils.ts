@@ -53,9 +53,6 @@ function dataTableColumnTypeToSql(
 			switch (dbType) {
 				case 'postgres':
 					return 'DOUBLE PRECISION';
-				case 'mysql':
-				case 'mariadb':
-					return 'DOUBLE';
 				case 'sqlite':
 					return 'REAL';
 				default:
@@ -134,17 +131,12 @@ export function renameColumnQuery(
 
 export function quoteIdentifier(name: string, dbType: DataSourceOptions['type']): string {
 	switch (dbType) {
-		case 'mysql':
-		case 'mariadb':
-			return `\`${name}\``;
 		case 'postgres':
 		case 'sqlite':
 		default:
-			return `"${name}"`;
+			return `"${name.replace(/"/g, '""')}"`;
 	}
 }
-
-type WithInsertId = { insertId: number };
 
 const isArrayOf = <T>(data: unknown, itemGuard: (x: unknown) => x is T): data is T[] =>
 	Array.isArray(data) && data.every(itemGuard);
@@ -156,10 +148,6 @@ const isNumber = (value: unknown): value is number => {
 const isDate = (value: unknown): value is Date => {
 	return value instanceof Date;
 };
-
-function hasInsertId(data: unknown): data is WithInsertId {
-	return typeof data === 'object' && data !== null && 'insertId' in data && isNumber(data.insertId);
-}
 
 function hasRowReturnData(data: unknown): data is DataTableRowReturn {
 	return (
@@ -181,7 +169,7 @@ function hasRowId(data: unknown): data is Pick<DataTableRowReturn, 'id'> {
 export function extractReturningData(raw: unknown): DataTableRowReturn[] {
 	if (!isArrayOf(raw, hasRowReturnData)) {
 		throw new UnexpectedError(
-			`Expected INSERT INTO raw to be { id: number; createdAt: string; updatedAt: string }[] on Postgres or MariaDB. Is '${JSON.stringify(raw)}'`,
+			`Expected INSERT INTO raw to be { id: number; createdAt: string; updatedAt: string }[] on Postgres. Is '${JSON.stringify(raw)}'`,
 		);
 	}
 
@@ -190,20 +178,13 @@ export function extractReturningData(raw: unknown): DataTableRowReturn[] {
 
 export function extractInsertedIds(raw: unknown, dbType: DataSourceOptions['type']): number[] {
 	switch (dbType) {
-		case 'postgres':
-		case 'mariadb': {
+		case 'postgres': {
 			if (!isArrayOf(raw, hasRowId)) {
 				throw new UnexpectedError(
-					`Expected INSERT INTO raw to be { id: number }[] on Postgres or MariaDB. Is '${JSON.stringify(raw)}'`,
+					`Expected INSERT INTO raw to be { id: number }[] on Postgres. Is '${JSON.stringify(raw)}'`,
 				);
 			}
 			return raw.map((r) => r.id);
-		}
-		case 'mysql': {
-			if (!hasInsertId(raw)) {
-				throw new UnexpectedError('Expected INSERT INTO raw.insertId: number for MySQL');
-			}
-			return [raw.insertId];
 		}
 		case 'sqlite':
 		default: {
@@ -314,7 +295,7 @@ function formatDateForDatabase(
 	}
 
 	// These dbs use DATETIME format without 'T' and 'Z'
-	if (dbType && ['sqlite', 'sqlite-pooled', 'mysql', 'mariadb'].includes(dbType)) {
+	if (dbType && ['sqlite', 'sqlite-pooled'].includes(dbType)) {
 		return date.toISOString().replace('T', ' ').replace('Z', '');
 	}
 

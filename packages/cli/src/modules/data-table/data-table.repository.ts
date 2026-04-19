@@ -353,6 +353,15 @@ export class DataTableRepository extends Repository<DataTable> {
 				.orderBy('datatable_name_lower', direction);
 		} else if (['createdAt', 'updatedAt'].includes(field)) {
 			query.orderBy(`dataTable.${field}`, direction);
+		} else if (field === 'size') {
+			query
+				.leftJoin(
+					`(${this.getDataTableSizeQuery()})`,
+					'size_data',
+					`size_data.table_name = '${toTableName('')}' || dataTable.id`,
+				)
+				.addSelect('size_data.table_bytes', 'size')
+				.orderBy('size', direction);
 		}
 	}
 
@@ -430,84 +439,50 @@ export class DataTableRepository extends Repository<DataTable> {
 	}
 
 	/**
-	 * Gets the size map for specific data tables.
-	 * Optimized to only check tables that exist in our entities, avoiding full catalog scans.
-	 *
-	 * @param dataTableIds - List of data table IDs to check sizes for
-	 * @returns Map of data table ID to size in bytes
+	 * Builds the SQL query for data table sizes.
+	 * When dataTableIds is provided, filters the query to those ids to avoid full catalog scans
+	 * (performance hardening for 100+ tables). When omitted (sort-by-size path), returns all.
 	 */
-	private async getAllDataTablesSizeMap(dataTableIds: string[]): Promise<Map<string, number>> {
-		if (dataTableIds.length === 0) {
-			return new Map<string, number>();
-		}
-
+	private getDataTableSizeQuery(dataTableIds?: string[]): string {
 		const dbType = this.globalConfig.database.type;
-
-		// Convert data table IDs to table names for SQL queries
-		const tableNames = dataTableIds.map((id) => toTableName(id));
-		const tableNamesStr = tableNames.map((name) => `'${name}'`).join(', ');
-
-		let sql = '';
+		const filter = dataTableIds?.length
+			? dataTableIds.map((id) => `'${toTableName(id)}'`).join(', ')
+			: undefined;
 
 		switch (dbType) {
 			case 'sqlite':
-				sql = `
+				return `
         SELECT name AS table_name, (SELECT SUM(pgsize) FROM dbstat WHERE name = t.name) AS table_bytes
         FROM sqlite_schema t
-        WHERE type = 'table' AND name IN (${tableNamesStr})
+        WHERE type = 'table'${filter ? ` AND name IN (${filter})` : ''}
       `;
-				break;
 
 			case 'postgresdb': {
 				const schemaName = this.globalConfig.database.postgresdb?.schema;
-				// Optimized: Only check pg_relation_size() for tables we know exist
-				// This avoids scanning ALL tables in pg_class matching the pattern
-				sql = `
+				return `
         SELECT c.relname AS table_name, pg_relation_size(c.oid) AS table_bytes
           FROM pg_class c
           JOIN pg_namespace n ON n.oid = c.relnamespace
          WHERE n.nspname = '${schemaName}'
-           AND c.relname IN (${tableNamesStr})
-           AND c.relkind IN ('r', 'm', 'p')
+           AND c.relkind IN ('r', 'm', 'p')${filter ? ` AND c.relname IN (${filter})` : ''}
       `;
-				break;
-			}
-
-			case 'mysqldb':
-			case 'mariadb': {
-				const databaseName = this.globalConfig.database.mysqldb.database;
-				const isMariaDb = dbType === 'mariadb';
-				const innodbTables = isMariaDb ? 'INNODB_SYS_TABLES' : 'INNODB_TABLES';
-				const innodbTablespaces = isMariaDb ? 'INNODB_SYS_TABLESPACES' : 'INNODB_TABLESPACES';
-				sql = `
-        SELECT t.TABLE_NAME AS table_name,
-            COALESCE(
-                (
-                  SELECT SUM(ists.ALLOCATED_SIZE)
-                    FROM information_schema.${innodbTables} ist
-                    JOIN information_schema.${innodbTablespaces} ists
-                      ON ists.SPACE = ist.SPACE
-                   WHERE ist.NAME = CONCAT(t.TABLE_SCHEMA, '/', t.TABLE_NAME)
-                ),
-                (t.DATA_LENGTH + t.INDEX_LENGTH)
-            ) AS table_bytes
-        FROM information_schema.TABLES t
-        WHERE t.TABLE_SCHEMA = '${databaseName}'
-          AND t.TABLE_NAME IN (${tableNamesStr})
-    `;
-				break;
 			}
 
 			default:
-				return new Map<string, number>();
+				return '';
 		}
+	}
+
+	private async getAllDataTablesSizeMap(dataTableIds: string[]): Promise<Map<string, number>> {
+		const sizeMap = new Map<string, number>();
+		if (dataTableIds.length === 0) return sizeMap;
+		const sql = this.getDataTableSizeQuery(dataTableIds);
+		if (sql === '') return sizeMap;
 
 		const result = (await this.query(sql)) as Array<{
 			table_name: string;
 			table_bytes: number | string | null;
 		}>;
-
-		const sizeMap = new Map<string, number>();
 
 		for (const row of result) {
 			if (row.table_bytes !== null && row.table_name) {
